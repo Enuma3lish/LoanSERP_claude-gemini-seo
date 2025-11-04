@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "start-all": "concurrently \"npm run start-backend\" \"npm run start-llm\" \"npm start\"",
+    "start-backend": "cd ../backend && python manage.py runserver",
+    "start-llm": "cd ../geo_LLM_infra/llm_broker/app && uvicorn main:app --reload --port 9001"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

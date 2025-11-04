@@ -1,0 +1,2 @@
+# Django CORS headers for frontend integration
+django-cors-headers>=4.3.0

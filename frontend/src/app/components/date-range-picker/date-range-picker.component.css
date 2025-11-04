@@ -1,0 +1,53 @@
+.date-range-picker {
+  margin-bottom: 30px;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.date-inputs {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.input-group label {
+  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+}
+
+.hint {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #f0f7ff;
+  border-left: 3px solid #667eea;
+  border-radius: 4px;
+}
+
+.hint small {
+  color: #555;
+}
+
+@media (max-width: 768px) {
+  .date-inputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .input-group {
+    width: 100%;
+  }
+}

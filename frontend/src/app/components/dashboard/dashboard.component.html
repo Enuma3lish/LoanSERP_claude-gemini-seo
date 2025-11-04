@@ -1,0 +1,49 @@
+<div class="dashboard container">
+  <header class="header">
+    <h1>🏦 LoanSERP 關鍵字趨勢分析儀表板</h1>
+    <p class="description">透過 Google Search Console 數據與 AI 分析，洞察貸款關鍵字趨勢</p>
+  </header>
+
+  <app-date-range-picker
+    (dateRangeSelected)="onDateRangeSelected($event)">
+  </app-date-range-picker>
+
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    <div class="spinner-large"></div>
+    <p>正在載入資料...</p>
+  </div>
+
+  <div *ngIf="!loading && charts.length > 0 && charts[0].data" class="charts-grid">
+    <div class="chart-wrapper full-width">
+      <app-chart-card
+        [title]="charts[0].title"
+        [chartData]="charts[0].data"
+        [dates]="dates"
+        [llmExplanation]="charts[0].explanation"
+        [isLoading]="charts[0].loading"
+        chartType="line">
+      </app-chart-card>
+    </div>
+
+    <div class="chart-wrapper" *ngFor="let chart of charts.slice(1, 6); let i = index">
+      <app-chart-card
+        [title]="chart.title"
+        [chartData]="chart.data"
+        [dates]="dates"
+        [llmExplanation]="chart.explanation"
+        [isLoading]="chart.loading"
+        chartType="line">
+      </app-chart-card>
+    </div>
+  </div>
+
+  <div *ngIf="!loading && charts[0].data === null" class="empty-state">
+    <div class="empty-icon">📊</div>
+    <h3>選擇日期範圍開始分析</h3>
+    <p>請在上方選擇日期範圍（7-90天），系統將自動載入資料並生成 AI 趨勢分析</p>
+  </div>
+</div>

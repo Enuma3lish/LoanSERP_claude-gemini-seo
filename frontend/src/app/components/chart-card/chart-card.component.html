@@ -1,0 +1,32 @@
+<div class="chart-card card">
+  <h3 class="chart-title">{{ title }}</h3>
+
+  <div class="chart-container">
+    <div *ngIf="isLoading" class="loading">
+      <div class="spinner"></div>
+      <p>載入中...</p>
+    </div>
+
+    <div *ngIf="!isLoading && chartOption" class="chart-wrapper">
+      <div echarts [options]="chartOption" class="chart"></div>
+    </div>
+  </div>
+
+  <div class="llm-explanation" *ngIf="llmExplanation">
+    <div class="explanation-header">
+      <span class="ai-badge">🤖 AI 趨勢分析</span>
+    </div>
+    <div class="explanation-content">
+      <p [innerHTML]="llmExplanation | sanitizeHtml"></p>
+    </div>
+  </div>
+
+  <div class="llm-explanation loading-explanation" *ngIf="!llmExplanation && !isLoading">
+    <div class="explanation-header">
+      <span class="ai-badge">🤖 AI 趨勢分析</span>
+    </div>
+    <div class="explanation-content">
+      <p class="loading-text">正在生成趨勢分析...</p>
+    </div>
+  </div>
+</div>

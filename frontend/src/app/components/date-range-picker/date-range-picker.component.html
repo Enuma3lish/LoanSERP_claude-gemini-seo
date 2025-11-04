@@ -1,0 +1,47 @@
+<div class="date-range-picker card">
+  <h2>選擇日期範圍</h2>
+  <p class="subtitle">最少 7 天，最多 90 天（從今天往前推算）</p>
+
+  <div class="date-inputs">
+    <div class="input-group">
+      <label for="start-date">開始日期</label>
+      <input
+        type="date"
+        id="start-date"
+        [(ngModel)]="startDate"
+        [min]="minDate"
+        [max]="maxDate"
+        (change)="onStartDateChange()"
+        required
+      />
+    </div>
+
+    <div class="input-group">
+      <label for="end-date">結束日期</label>
+      <input
+        type="date"
+        id="end-date"
+        [(ngModel)]="endDate"
+        [min]="startDate"
+        [max]="maxDate"
+        required
+      />
+    </div>
+
+    <button
+      class="btn btn-primary"
+      (click)="validateAndEmit()"
+      [disabled]="!startDate || !endDate"
+    >
+      分析趨勢
+    </button>
+  </div>
+
+  <div *ngIf="errorMessage" class="error">
+    {{ errorMessage }}
+  </div>
+
+  <div class="hint">
+    <small>💡 建議選擇至少 14 天的資料以獲得更準確的趨勢分析</small>
+  </div>
+</div>
