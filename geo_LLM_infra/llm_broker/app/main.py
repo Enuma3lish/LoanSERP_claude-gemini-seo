@@ -16,6 +16,7 @@ import asyncio
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 import redis.asyncio as redis
 
@@ -329,6 +330,18 @@ def make_consensus(outputs: List[ProviderOut]) -> str:
 # FastAPI App
 # -------------------------
 app = FastAPI(title=APP_NAME)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:4200",
+        "http://127.0.0.1:4200",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/v1/health")
