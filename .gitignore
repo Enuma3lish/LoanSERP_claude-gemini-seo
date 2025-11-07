@@ -209,10 +209,16 @@ client_secret.json
 *.env
 **/.env
 **/.env.*
+*.env.bak
 
 # Backend credentials directory and all contents
 backend/credentials/
 backend/credentials/**
+
+# Database data directories (should not be in version control)
+data/
+data/postgres/
+data/redis/
 
 # Shell scripts (if needed)
 *.sh
