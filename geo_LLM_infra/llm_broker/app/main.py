@@ -14,6 +14,10 @@ import json
 import hashlib
 import asyncio
 from typing import List, Optional, Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -360,12 +364,24 @@ async def health():
 @app.post("/v1/summarize/trend", response_model=TrendResponse)
 async def summarize_trend(req: TrendRequest):
     # 基本資料檢查
+    import traceback
     try:
+        print(f"[DEBUG] Received request: period={req.period}, top_keywords={req.top_keywords}, dates_len={len(req.dates)}, series_len={len(req.series)}")
+        for i, s in enumerate(req.series):
+            print(f"[DEBUG] Series[{i}]: name={s.name}, data_len={len(s.data)}")
         _validate_lengths(req)
-    except HTTPException:
+    except HTTPException as e:
+        print(f"[ERROR] HTTPException: {e.detail}")
+        traceback.print_exc()
         raise
     except ValidationError as e:
+        print(f"[ERROR] ValidationError: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"Validation error: {str(e)}")
 
     payload = req.model_dump()
     cache_key = "llm:trend:" + _hash_payload(payload)
@@ -381,25 +397,37 @@ async def summarize_trend(req: TrendRequest):
 
     # 準備 LLM 呼叫
     calls = []
+    print(f"[DEBUG] GEMINI_API_KEY configured: {bool(GEMINI_API_KEY)}")
+    print(f"[DEBUG] CLAUDE_API_KEY configured: {bool(CLAUDE_API_KEY)}")
     if GEMINI_API_KEY:
+        print("[DEBUG] Adding Gemini call")
         calls.append(call_gemini(req))
     if CLAUDE_API_KEY:
+        print("[DEBUG] Adding Claude call")
         calls.append(call_claude(req))
 
     if not calls:
+        print("[ERROR] No LLM provider available")
         raise HTTPException(status_code=400, detail="No LLM provider available (set GEMINI_API_KEY and/or CLAUDE_API_KEY).")
 
     # 并發呼叫；若單一供應商失敗，不影響另一個
+    print(f"[DEBUG] Calling {len(calls)} LLM provider(s)")
     results = await asyncio.gather(*calls, return_exceptions=True)
+    print(f"[DEBUG] Got {len(results)} results")
     outputs: List[ProviderOut] = []
-    for r in results:
+    for i, r in enumerate(results):
         if isinstance(r, Exception):
             # 不中斷；略過失敗供應商
+            print(f"[ERROR] Provider {i} failed: {type(r).__name__}: {str(r)}")
+            import traceback
+            traceback.print_exc()
             continue
         if r:
+            print(f"[DEBUG] Provider {i} succeeded: {r.provider}")
             outputs.append(r)
 
     if not outputs:
+        print("[ERROR] All LLM providers failed")
         raise HTTPException(status_code=502, detail="All LLM providers failed.")
 
     resp = TrendResponse(
