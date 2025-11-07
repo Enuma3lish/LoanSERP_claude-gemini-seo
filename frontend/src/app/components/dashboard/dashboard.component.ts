@@ -59,12 +59,32 @@ export class DashboardComponent implements OnInit {
     const startStr = this.formatDate(dateRange.start);
     const endStr = this.formatDate(dateRange.end);
 
+    console.log('Fetching data for date range:', startStr, 'to', endStr);
+
     // Fetch data from backend with auto-pull enabled
     this.backendApi.getTop5TimeseriesAuto(startStr, endStr, true).subscribe({
       next: (response: TimeseriesResponse) => {
+        console.log('Received response from backend:', response);
+        console.log('Response series:', response.series);
+        console.log('Response keywords:', response.keywords);
+        console.log('Response dates:', response.dates);
+
         this.loading = false;
         this.dates = response.dates;
         this.keywords = response.keywords;
+
+        // Check if we have data
+        if (!response.series || response.series.length === 0) {
+          console.warn('No series data received from backend');
+          this.error = '後端返回的資料為空，請檢查資料庫是否有資料';
+          return;
+        }
+
+        if (!response.dates || response.dates.length === 0) {
+          console.warn('No dates received from backend');
+          this.error = '後端返回的日期資料為空';
+          return;
+        }
 
         // Update chart data
         this.updateChartData(response);
@@ -76,22 +96,31 @@ export class DashboardComponent implements OnInit {
         this.loading = false;
         this.error = '無法載入資料，請確認後端服務是否正常運行';
         console.error('Backend API error:', err);
+        console.error('Error details:', err.error);
+        console.error('Error status:', err.status);
+        console.error('Error message:', err.message);
       }
     });
   }
 
   private updateChartData(response: TimeseriesResponse): void {
+    console.log('updateChartData called with response:', response);
+
     // Chart 0: Comparison chart with all 5 keywords
     this.charts[0].title = 'Top 5 關鍵字曝光比較';
     this.charts[0].data = response.series;
+    console.log('Set charts[0].data to:', this.charts[0].data);
 
     // Charts 1-5: Individual keyword charts
     response.series.forEach((series, index) => {
       if (index < 5) {
         this.charts[index + 1].title = `${series.name} - 曝光趨勢`;
         this.charts[index + 1].data = series.data;
+        console.log(`Set charts[${index + 1}].data (${series.name}) to:`, series.data);
       }
     });
+
+    console.log('All charts after update:', this.charts);
   }
 
   private fetchAllLLMExplanations(response: TimeseriesResponse): void {

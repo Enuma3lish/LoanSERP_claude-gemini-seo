@@ -32,7 +32,15 @@ export class ChartCardComponent implements OnInit, OnChanges {
   }
 
   private updateChart(): void {
+    console.log('ChartCard updateChart called for:', this.title);
+    console.log('  chartData:', this.chartData);
+    console.log('  dates:', this.dates);
+
     if (!this.chartData || !this.dates || this.dates.length === 0) {
+      console.warn('ChartCard updateChart early return - missing data');
+      console.warn('  chartData is null/undefined:', !this.chartData);
+      console.warn('  dates is null/undefined:', !this.dates);
+      console.warn('  dates.length === 0:', this.dates?.length === 0);
       return;
     }
 
@@ -106,6 +114,10 @@ export class ChartCardComponent implements OnInit, OnChanges {
       },
       series: series
     };
+
+    console.log('ChartCard chart option created for:', this.title);
+    console.log('  Number of series:', series.length);
+    console.log('  Series:', series);
   }
 
   private getColor(index: number): string {
