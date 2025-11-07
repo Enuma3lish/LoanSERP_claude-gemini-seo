@@ -1,0 +1,204 @@
+version: "3.9"
+
+name: loanserp
+
+services:
+  # =============================================================================
+  # INFRASTRUCTURE SERVICES
+  # =============================================================================
+
+  postgres:
+    build:
+      context: ./docker
+      dockerfile: pgvector.Dockerfile
+    container_name: loanserp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-loanserp}
+      POSTGRES_USER: ${POSTGRES_USER:-loan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loanpwd}
+      TZ: ${TZ:-Asia/Taipei}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loan} -d ${POSTGRES_DB:-loanserp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - loans-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: loanserp-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - loans-net
+
+  # =============================================================================
+  # APPLICATION SERVICES
+  # =============================================================================
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: loanserp-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override with Docker network hostnames
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount for development hot-reload (comment out for production)
+      # - ./backend:/app
+      # Mount for GSC credentials
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/admin/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - loans-net
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        gunicorn loanserp.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120
+      "
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: loanserp-celery-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      # Mount for GSC credentials
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - loans-net
+    command: celery -A loanserp worker --loglevel=info --concurrency=4
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: loanserp-celery-beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      # Mount for GSC credentials
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - loans-net
+    command: celery -A loanserp beat --loglevel=info
+
+  llm-broker:
+    build:
+      context: ./geo_LLM_infra/llm_broker
+      dockerfile: Dockerfile
+    container_name: loanserp-llm-broker
+    restart: unless-stopped
+    env_file:
+      - ./geo_LLM_infra/llm_broker/.env
+    environment:
+      # Override Redis URL to use Docker network
+      REDIS_URL: redis://redis:6379/2
+    ports:
+      - "9001:9001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9001/docs || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - loans-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: loanserp-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - llm-broker
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - loans-net
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+
+networks:
+  loans-net:
+    name: loans-net
+    driver: bridge
+
+# =============================================================================
+# VOLUMES (optional - for named volumes instead of bind mounts)
+# =============================================================================
+
+# Uncomment to use named volumes instead of bind mounts
+# volumes:
+#   postgres-data:
+#   redis-data:
