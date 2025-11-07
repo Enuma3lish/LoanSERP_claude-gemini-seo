@@ -1,0 +1,229 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: loanserp-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-loanserp}
+      POSTGRES_USER: ${POSTGRES_USER:-loan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loanpwd}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loan} -d ${POSTGRES_DB:-loanserp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+
+  # Redis for caching and Celery broker
+  redis:
+    image: redis:7-alpine
+    container_name: loanserp-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+
+  # Django Backend Service
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: loanserp-backend
+    environment:
+      # Django settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+
+      # Database settings
+      POSTGRES_DB: ${POSTGRES_DB:-loanserp}
+      POSTGRES_USER: ${POSTGRES_USER:-loan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loanpwd}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      # Redis settings
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # App settings
+      LANGUAGE_CODE: ${LANGUAGE_CODE:-zh-hant}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Taipei}
+
+      # GSC settings
+      GSC_PROPERTY_URI: ${GSC_PROPERTY_URI:-sc-domain:alphaloan.co}
+      GSC_CLIENT_SECRETS_FILE: ${GSC_CLIENT_SECRETS_FILE:-/app/credentials/client_secret.json}
+      GSC_TOKEN_FILE: ${GSC_TOKEN_FILE:-/app/credentials/token.json}
+
+      # Business settings
+      KEYWORD_TRACK_LIST: ${KEYWORD_TRACK_LIST:-貸款,貸款評估,貸款預測,貸款推薦,房屋貸款,企業貸款,個人信貸,信貸申請,信貸相關}
+    volumes:
+      - ../backend:/app
+      - backend_static:/app/staticfiles
+      - backend_credentials:/app/credentials
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput --clear &&
+        gunicorn loanserp.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120
+      "
+
+  # Celery Worker for background tasks
+  celery-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: loanserp-celery-worker
+    environment:
+      # Django settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+
+      # Database settings
+      POSTGRES_DB: ${POSTGRES_DB:-loanserp}
+      POSTGRES_USER: ${POSTGRES_USER:-loan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loanpwd}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      # Redis settings
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # App settings
+      LANGUAGE_CODE: ${LANGUAGE_CODE:-zh-hant}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Taipei}
+
+      # GSC settings
+      GSC_PROPERTY_URI: ${GSC_PROPERTY_URI:-sc-domain:alphaloan.co}
+      GSC_CLIENT_SECRETS_FILE: ${GSC_CLIENT_SECRETS_FILE:-/app/credentials/client_secret.json}
+      GSC_TOKEN_FILE: ${GSC_TOKEN_FILE:-/app/credentials/token.json}
+    volumes:
+      - ../backend:/app
+      - backend_credentials:/app/credentials
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+    command: celery -A loanserp worker --loglevel=info --concurrency=4
+
+  # Celery Beat for scheduled tasks
+  celery-beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: loanserp-celery-beat
+    environment:
+      # Django settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+
+      # Database settings
+      POSTGRES_DB: ${POSTGRES_DB:-loanserp}
+      POSTGRES_USER: ${POSTGRES_USER:-loan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-loanpwd}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      # Redis settings
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+      # App settings
+      LANGUAGE_CODE: ${LANGUAGE_CODE:-zh-hant}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Taipei}
+    volumes:
+      - ../backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+    command: celery -A loanserp beat --loglevel=info
+
+  # LLM Broker Service
+  llm-broker:
+    build:
+      context: ../geo_LLM/llm_broker
+      dockerfile: Dockerfile
+    container_name: loanserp-llm-broker
+    environment:
+      # LLM Broker settings
+      LLM_BROKER_HOST: 0.0.0.0
+      LLM_BROKER_PORT: 9001
+
+      # Redis settings for caching
+      REDIS_URL: redis://redis:6379/2
+      LLM_CACHE_TTL_SEC: ${LLM_CACHE_TTL_SEC:-259200}
+
+      # LLM API keys (must be set in .env file)
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+
+      # Model preferences
+      PREFERRED_MODELS: ${PREFERRED_MODELS:-gemini-2.0-flash,claude-3-haiku-20240307}
+      OUTPUT_LANG: ${OUTPUT_LANG:-zh-tw}
+    volumes:
+      - ../geo_LLM/llm_broker/app:/app/app
+    ports:
+      - "9001:9001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - loanserp-network
+    restart: unless-stopped
+
+networks:
+  loanserp-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_static:
+    driver: local
+  backend_credentials:
+    driver: local
